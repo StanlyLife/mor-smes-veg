@@ -1,0 +1,5 @@
+{
+  "framework": null,
+  "buildCommand": "node apartment-3d/build.js && node apartment-3d/dist.js",
+  "outputDirectory": "apartment-3d/dist"
+}
