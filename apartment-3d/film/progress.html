@@ -1,0 +1,136 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Progressive film</title></head>
+<body style="margin:0;background:#111">
+<canvas id="out" width="1920" height="1080" style="max-width:100%"></canvas>
+<script>
+// Progressive renovation film of the living room, frame by frame: listing photo 03 -> furniture out item by item -> old skirting off ->
+// oak herringbone laid row by row -> rehab boards one by one -> taupe paint stroke by stroke -> crown, skirting, panels -> evening ->
+// the mood render's furniture and lamps item by item -> before/after slider. Frames are posted to the local server (/__film/).
+const W = 2528, H = 1686, FPS = 30, OW = 1920, OH = 1080, Q = new URLSearchParams(location.search);
+function homography(src, dst) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) { const [x, y] = src[i], [u, v] = dst[i]; A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u); A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v); }
+  for (let c = 0; c < 8; c++) { let p = c; for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r; [A[c], A[p]] = [A[p], A[c]]; [b[c], b[p]] = [b[p], b[c]];
+    for (let r = 0; r < 8; r++) if (r !== c) { const f = A[r][c] / A[c][c]; for (let k = c; k < 8; k++) A[r][k] -= f * A[c][k]; b[r] -= f * b[c]; } }
+  const h = b.map((v, i) => v / A[i][i]);
+  return (x, y) => { const d = h[6] * x + h[7] * y + 1; return [(h[0] * x + h[1] * y + h[2]) / d, (h[3] * x + h[4] * y + h[5]) / d]; };
+}
+const CEIL = 2.4;
+const back = homography([[0, 0], [3.01, 0], [3.01, CEIL], [0, CEIL]], [[920, 1155], [1404, 1058], [1404, 630], [920, 532]]); // back wall, u = 0 at the opening's right casing
+const right = homography([[0, 0], [4.14, 0], [4.14, CEIL], [0, CEIL]], [[1404, 1058], [2478, 1248], [2478, 362], [1404, 630]]); // gable wall, u = 0 at the corner
+const floorP = homography([[3.65, 0], [5.99, 0], [8.83, 4.28], [8.83, 8.42]], [[250, 1056], [704, 1046], [1404, 1065], [2478, 1255]]); // floor plane in flat coordinates (x, z)
+const quad = (P, u0, u1, v0, v1) => [P(u0, v0), P(u1, v0), P(u1, v1), P(u0, v1)];
+const poly = (g, pts) => { g.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) g.lineTo(p[0], p[1]); g.closePath(); };
+const cl = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x)), ss = (a, b, x) => cl((x - a) / (b - a)), ease = x => x * x * (3 - 2 * x);
+async function load(src) { const i = new Image(); i.src = src; await i.decode(); return i; }
+function canvas(w = W, h = H) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+// a feathered cut-out of `src` inside polygon `pts` (full-frame coordinates), cropped to its bounds
+function layer(src, pts, feather = 8) {
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), x0 = Math.max(0, Math.floor(Math.min(...xs)) - 20), y0 = Math.max(0, Math.floor(Math.min(...ys)) - 20);
+  const x1 = Math.min(W, Math.ceil(Math.max(...xs)) + 20), y1 = Math.min(H, Math.ceil(Math.max(...ys)) + 20), c = canvas(x1 - x0, y1 - y0), g = c.getContext('2d');
+  g.filter = `blur(${feather}px)`; g.translate(-x0, -y0); g.beginPath(); poly(g, pts); g.fillStyle = '#fff'; g.fill(); g.filter = 'none';
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-in'; g.drawImage(src, -x0, -y0); return { c, x0, y0 };
+}
+const P3 = s => s.map(([x, y]) => [x * 1.58, y * 1.58]); // listing photo coordinates (1600 wide) -> frame
+const PR = s => s.map(([x, y]) => [55 + x * 1.75, 177 + y * 1.75]); // render coordinates (1448 wide) -> frame (aligned to the photo)
+const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+// ---- timeline (seconds)
+const T = { out: 3, skirt: 9, floor: 10.8, boards: 16.5, paint: 22.5, trim: 28.5, eve: 33, inn: 35, after: 43.5, slide: 47.5, end: 54.5 };
+const CAPS = [[0, 'Before'], [T.out, 'Furniture out'], [T.skirt, 'Old skirting off'], [T.floor, 'Herringbone oak floor'], [T.boards, 'Rehab boards over the old wallpaper'], [T.paint, 'Filled and painted taupe'], [T.trim, 'Crown moulding, skirting and wall panels'], [T.eve, 'Evening light'], [T.inn, 'Furniture, shelves and lamps'], [T.after, 'After']];
+(async () => {
+  const [photo, s1, oak, boardsI, taupe, trim, eve, rend0] = await Promise.all(['../../listing/images/03.jpg', 'ai/s1-empty.png', 'ai/s2r-oak.png', 'ai/s3r-boards.png', 'ai/s4r-taupe.png', 'ai/s5r-trim.png', 'ai/s6r-evening.png', '../renders/stue.webp'].map(load));
+  const full = img => { const c = canvas(), g = c.getContext('2d'); g.drawImage(img, 0, 0, W, H); return c; };
+  const ph = full(photo), rend = canvas(); { const g = rend.getContext('2d'); g.drawImage(eve, 0, 0); g.drawImage(rend0, 55, 177, 1448 * 1.75, 1086 * 1.75); }
+  // the empty room without the old skirting: take the wall bottom band from the oak stage
+  const band = (g, P, u0, u1) => { g.beginPath(); poly(g, quad(P, u0, u1, 0.002, 0.16)); };
+  const noSk = canvas(); { const g = noSk.getContext('2d'); g.drawImage(s1, 0, 0); g.save(); g.beginPath(); poly(g, quad(back, -2.8, -2.07, 0.002, 0.16)); poly(g, quad(back, -0.08, 3.01, 0.002, 0.16)); poly(g, quad(right, 0, 4.14, 0.002, 0.16)); g.clip(); g.drawImage(oak, 0, 0); g.restore(); }
+  // ---- furniture in the listing photo, removed in this order (overlapping sofa, table and rug go together)
+  const OUT = [
+    P3(rect(968, 408, 1082, 532)), P3(rect(733, 433, 872, 548)), P3(rect(22, 582, 222, 835)), P3(rect(1518, 498, 1600, 655)),
+    P3([[1188, 422], [1552, 422], [1552, 828], [1188, 828]]), P3(rect(628, 648, 684, 732)),
+    P3([[596, 742], [662, 742], [658, 578], [1228, 578], [1228, 760], [1272, 770], [1036, 978]]),
+    P3(rect(148, 536, 508, 748)), P3(rect(0, 366, 50, 875)), P3([[0, 776], [204, 776], [204, 1067], [0, 1067]]), P3(rect(1528, 266, 1600, 1067)),
+  ].map(p => layer(ph, p));
+  // ---- the render's furniture and lamps, added in this order
+  const INN = [
+    PR([[392, 664], [1012, 596], [1448, 818], [1448, 1086], [1226, 1086]]), PR(rect(652, 456, 1214, 636)), PR(rect(866, 258, 1068, 452)), PR(rect(796, 336, 836, 412)), PR(rect(1104, 314, 1146, 388)),
+    PR(rect(568, 252, 780, 560)), PR(rect(1176, 188, 1390, 596)), PR([[622, 536], [1008, 556], [1008, 728], [622, 728]]), PR(rect(396, 480, 622, 670)),
+    PR([[1032, 512], [1448, 512], [1448, 904], [1032, 904]]), PR(rect(0, 246, 178, 1086)), PR(rect(692, 98, 904, 218)), PR(rect(98, 246, 512, 604)), PR(rect(1382, 0, 1448, 1086)),
+  ].map(p => layer(rend, p, 10));
+  const work = canvas(), g = work.getContext('2d'), out = document.getElementById('out'), o = out.getContext('2d'); o.imageSmoothingQuality = 'high';
+  const drawIn = (img, shapes) => { g.save(); g.beginPath(); for (const s of shapes) poly(g, s); g.clip(); g.drawImage(img, 0, 0); g.restore(); };
+  const fadeShapes = (img, list) => { // list of [shape, alpha]: fully shown ones in one pass, fading ones each on their own
+    const done = list.filter(([, a]) => a >= 1).map(([s]) => s); if (done.length) drawIn(img, done);
+    for (const [s, a] of list) if (a > 0 && a < 1) { g.save(); g.globalAlpha = a; g.beginPath(); poly(g, s); g.clip(); g.drawImage(img, 0, 0); g.restore(); }
+  };
+  const stagger = (n, t0, t1, dur, t) => [...Array(n)].map((_, k) => ease(ss(t0 + (t1 - t0) * k / Math.max(1, n - 1), t0 + (t1 - t0) * k / Math.max(1, n - 1) + dur, t)));
+  // floor rows across the flat, laid from the dining-room wall toward the camera
+  // rows spaced evenly on screen (the camera stands close to the window wall, so near rows are narrow on the floor)
+  const ROWS = 16, zAtY = y => { let a = 0, b = 9.25; for (let i = 0; i < 50; i++) { const m = (a + b) / 2; floorP(7.5, m)[1] < y ? a = m : b = m; } return (a + b) / 2; };
+  const ZR = [...Array(ROWS + 1)].map((_, k) => k === 0 ? -0.3 : k === ROWS ? 9.45 : zAtY(1040 + 660 * k / ROWS));
+  const rowShape = k => [floorP(2.5, ZR[k]), floorP(10.5, ZR[k]), floorP(10.5, ZR[k + 1] + 0.01), floorP(2.5, ZR[k + 1] + 0.01)];
+  // 1.2 m boards on both walls, left to right; panel frames; 35 cm paint strokes
+  const BOARDS = [...[-3, -2, -1, 0, 1, 2].map(k => quad(back, Math.max(-2.8, k * 1.2), Math.min(3.01, (k + 1) * 1.2), -0.02, CEIL + 0.02)), ...[0, 1, 2, 3].map(k => quad(right, k * 1.2 - (k ? 0 : 0.06), Math.min(4.2, (k + 1) * 1.2), -0.02, CEIL + 0.02))];
+  const STROKES = []; for (let u = -2.8; u < 3.01; u += 0.35) STROKES.push([back, u]); for (let u = 0; u < 4.14; u += 0.35) STROKES.push([right, u]);
+  const PANELS = [[back, 0.16, 1.44], [back, 1.58, 2.85], [right, 0.18, 1.34], [right, 1.49, 2.65], [right, 2.8, 3.96]].map(([P, a, b]) => quad(P, a - 0.03, b + 0.03, 0.26, CEIL - 0.3));
+  const DINING = [[[196, 596], [896, 596], [896, 1116], [196, 1116]]];
+  function frame(t) {
+    g.globalAlpha = 1;
+    if (t < T.skirt) { // furniture out
+      g.drawImage(s1, 0, 0);
+      const a = stagger(OUT.length, T.out + 0.2, T.out + 5.3, 0.45, t);
+      OUT.forEach((L, k) => { if (a[k] < 1) { g.globalAlpha = 1 - a[k]; g.drawImage(L.c, L.x0, L.y0); g.globalAlpha = 1; } });
+    } else if (t < T.floor) { // skirting off, running out from the corner along both walls
+      g.drawImage(s1, 0, 0); const p = ease(ss(T.skirt + 0.1, T.floor - 0.1, t));
+      g.save(); g.beginPath(); poly(g, quad(back, 3.01 - 5.81 * p, 3.01, 0.002, 0.16)); poly(g, quad(right, 0, 4.14 * p, 0.002, 0.16)); g.clip(); g.drawImage(noSk, 0, 0); g.restore();
+    } else if (t < T.boards) { // floor rows
+      g.drawImage(noSk, 0, 0); fadeShapes(oak, stagger(ROWS, T.floor + 0.2, T.boards - 0.6, 0.35, t).map((a, k) => [rowShape(k), a]));
+    } else if (t < T.paint) { // boards, then the dining room
+      g.drawImage(oak, 0, 0); fadeShapes(boardsI, stagger(BOARDS.length, T.boards + 0.2, T.paint - 1.2, 0.35, t).map((a, k) => [BOARDS[k], a]));
+      const d = ease(ss(T.paint - 1.0, T.paint - 0.3, t)); if (d > 0) { g.save(); g.globalAlpha = d; g.beginPath(); poly(g, DINING[0]); g.clip(); g.drawImage(boardsI, 0, 0); g.restore(); }
+    } else if (t < T.trim) { // paint strokes, top down
+      g.drawImage(boardsI, 0, 0); const n = STROKES.length, sh = [];
+      STROKES.forEach(([P, u], k) => { const s0 = T.paint + 0.2 + (T.trim - 1.6 - T.paint) * k / (n - 1), p = ease(ss(s0, s0 + 0.5, t)); if (p > 0) sh.push(quad(P, u - 0.005, u + 0.355, CEIL + 0.03 - (CEIL + 0.06) * p, CEIL + 0.03)); });
+      if (sh.length) drawIn(taupe, sh);
+      const d = ease(ss(T.trim - 1.1, T.trim - 0.3, t)); if (d > 0) { g.globalAlpha = d; g.drawImage(taupe, 0, 0); g.globalAlpha = 1; }
+    } else if (t < T.eve) { // crown and skirting run out from the corner, then the panels
+      g.drawImage(taupe, 0, 0); const c = ease(ss(T.trim + 0.1, T.trim + 1.5, t)), k = ease(ss(T.trim + 0.9, T.trim + 2.3, t)), sh = [];
+      if (c > 0) sh.push(quad(back, 3.01 - 5.81 * c, 3.02, CEIL - 0.14, CEIL + 0.04), quad(right, -0.01, 4.14 * c, CEIL - 0.14, CEIL + 0.04));
+      if (k > 0) sh.push(quad(back, 3.01 - 5.81 * k, 3.02, -0.03, 0.17), quad(right, -0.01, 4.14 * k, -0.03, 0.17));
+      if (sh.length) drawIn(trim, sh);
+      fadeShapes(trim, stagger(PANELS.length, T.trim + 2.4, T.eve - 0.6, 0.35, t).map((a, j) => [PANELS[j], a]));
+    } else if (t < T.inn) { // evening
+      g.drawImage(trim, 0, 0); g.globalAlpha = ease(ss(T.eve, T.inn, t)); g.drawImage(eve, 0, 0); g.globalAlpha = 1;
+    } else if (t < T.slide) { // furniture and lamps from the render, then the whole render
+      g.drawImage(eve, 0, 0); const a = stagger(INN.length, T.inn + 0.2, T.after - 2.2, 0.55, t);
+      INN.forEach((L, k) => { if (a[k] > 0) { g.globalAlpha = a[k]; g.drawImage(L.c, L.x0, L.y0); g.globalAlpha = 1; } });
+      const f = ease(ss(T.after - 1.8, T.after - 0.2, t)); if (f > 0) { g.globalAlpha = f; g.drawImage(rend, 0, 0); g.globalAlpha = 1; }
+    }
+    // camera: slow push toward the corner, fixed for the slider
+    const z = t < T.slide ? 1 + 0.10 * t / T.slide : 1.06, sw = W / z, shh = 1422 / z, sx = (W - sw) * 0.56, sy = 150 + (1422 - shh) * 0.5;
+    if (t < T.slide) o.drawImage(work, sx, sy, sw, shh, 0, 0, OW, OH);
+    else { // before / after slider
+      const u = t - T.slide, d = u < 1.6 ? 1920 - 960 * (1 - Math.cos(Math.PI * u / 1.6)) / 2 : u < 5.2 ? 960 + 430 * Math.sin((u - 1.6) * 1.75) : 960 + 430 * Math.sin(3.6 * 1.75) * (1 - (u - 5.2) / 1.8);
+      o.drawImage(ph, sx, sy, sw, shh, 0, 0, OW, OH); o.save(); o.beginPath(); o.rect(d, 0, OW - d, OH); o.clip(); o.drawImage(rend, sx, sy, sw, shh, 0, 0, OW, OH); o.restore();
+      o.fillStyle = '#F4F1EA'; o.fillRect(d - 3, 0, 6, OH); label('Before', 70, 1); label('After', -70, 1);
+    }
+    brand();
+    if (t < T.slide) { let i = 0; while (i < CAPS.length - 1 && t >= CAPS[i + 1][0]) i++; const a = Math.min(ss(CAPS[i][0], CAPS[i][0] + 0.4, t), i < CAPS.length - 1 ? 1 - ss(CAPS[i + 1][0] - 0.35, CAPS[i + 1][0], t) : 1 - ss(T.slide - 0.35, T.slide, t)); label(CAPS[i][1], 70, a); }
+  }
+  function label(txt, x, a) {
+    if (a <= 0) return; o.save(); o.globalAlpha = a; o.font = '600 46px "Segoe UI", sans-serif'; o.textBaseline = 'middle';
+    const w = o.measureText(txt).width, bx = x > 0 ? x - 26 : OW + x - w - 26, by = OH - 150 - 18; o.fillStyle = 'rgba(16,18,19,.72)'; o.beginPath(); o.roundRect(bx, by, w + 52, 84, 10); o.fill();
+    o.fillStyle = '#F4F1EA'; o.fillText(txt, bx + 26, by + 43); o.restore();
+  }
+  function brand() { o.save(); o.font = '600 28px "Segoe UI", sans-serif'; o.textBaseline = 'middle'; const txt = 'Mor Smes veg 11C · Stue', w = o.measureText(txt).width; o.fillStyle = 'rgba(16,18,19,.5)'; o.beginPath(); o.roundRect(44, 32, w + 32, 52, 8); o.fill(); o.fillStyle = '#F4F1EA'; o.fillText(txt, 60, 59); o.restore(); }
+  const only = Q.get('t') ? Q.get('t').split(',').map(Number) : null; // ?t=6,12.5 renders just those frames for checking
+  const N = only ? only.length : Math.round(T.end * FPS);
+  for (let i = 0; i < N; i++) {
+    const t = only ? only[i] : i / FPS; frame(t);
+    const blob = await new Promise(r => out.toBlob(r, 'image/jpeg', 0.93));
+    await fetch('/__film/' + (only ? 'check-' + t + '.jpg' : 'f' + String(i).padStart(5, '0') + '.jpg'), { method: 'POST', body: blob });
+  }
+  await fetch('/__film/progress-done.txt', { method: 'POST', body: String(N) });
+})();
+</script>
+</body></html>

@@ -1,0 +1,130 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Film stages</title></head>
+<body style="margin:0;background:#111;color:#ddd;font:13px sans-serif">
+<canvas id="c" style="max-width:100%"></canvas>
+<script>
+// Paints the later renovation stages onto the AI photo of the empty room with the new vinyl floor (film/ai/s2-vinyl.png):
+// rehab boards, beige paint, white skirting + crown moulding + panel mouldings. Wall planes are mapped with homographies
+// from wall coordinates (metres along the wall, metres up) to image pixels, measured on the photo.
+const W = 2528, H = 1686, VAR = new URLSearchParams(location.search).get('variant') || 'oppussing', RENDER = VAR === 'render';
+function homography(src, dst) { // 4 point pairs -> 3x3 (h33 = 1)
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) { const [x, y] = src[i], [u, v] = dst[i]; A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u); A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v); }
+  for (let c = 0; c < 8; c++) { let p = c; for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r; [A[c], A[p]] = [A[p], A[c]]; [b[c], b[p]] = [b[p], b[c]];
+    for (let r = 0; r < 8; r++) if (r !== c) { const f = A[r][c] / A[c][c]; for (let k = c; k < 8; k++) A[r][k] -= f * A[c][k]; b[r] -= f * b[c]; } }
+  const h = b.map((v, i) => v / A[i][i]);
+  return (x, y) => { const d = h[6] * x + h[7] * y + 1; return [(h[0] * x + h[1] * y + h[2]) / d, (h[3] * x + h[4] * y + h[5]) / d]; };
+}
+// back wall: u = 0 at the outer edge of the right casing of the dining opening, corner at u = 3.01; right wall: corner u = 0 to window wall u = 4.14
+const CEIL = 2.4;
+const back = homography([[0, 0], [3.01, 0], [3.01, CEIL], [0, CEIL]], [[920, 1155], [1404, 1058], [1404, 630], [920, 532]]);
+const right = homography([[0, 0], [4.14, 0], [4.14, CEIL], [0, CEIL]], [[1404, 1058], [2478, 1248], [2478, 362], [1404, 630]]);
+const quad = (P, u0, u1, v0, v1) => [P(u0, v0), P(u1, v0), P(u1, v1), P(u0, v1)];
+const pathPoly = (g, pts) => { g.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) g.lineTo(p[0], p[1]); g.closePath(); };
+const KEEP = [[0, 586, 46, 210], [2187, 1135, 38, 36], [2260, 1143, 47, 34], [1479, 1023, 22, 30]]; // fuse cabinet, power outlets
+const DOOR = RENDER ? [-2.07, -0.08, 0, 1.99] : [-2.15, 0, 0, 2.07]; // dining opening; the render look paints the casing in the wall colour
+function wallClip(g, v0 = 0, v1 = CEIL) { // back wall (with the opening cut out) and right wall, between heights v0..v1
+  g.beginPath(); pathPoly(g, quad(back, -2.8, 3.01, v0, v1)); pathPoly(g, quad(back, DOOR[0], DOOR[1], Math.max(v0, -0.1), Math.min(v1, DOOR[3])));
+  pathPoly(g, quad(right, 0, 4.14, v0, v1));
+  for (const [x, y, w, h] of KEEP) g.rect(x + w, y, -w, h);
+  g.clip('evenodd');
+}
+// dining room walls seen through the opening (full-res pixel polygons), minus windows, doors, radiator and mirror
+const DINING = [[[250, 666], [704, 666], [704, 1044], [250, 1054]], [[704, 656], [816, 624], [816, 1090], [704, 1044]], [[200, 600], [250, 666], [250, 1060], [200, 1100]]];
+const DIN_KEEP = [[296, 706, 380, 336], [704, 936, 50, 104], [806, 664, 84, 440], [712, 752, 76, 96]];
+function tintDining(g, rgb) {
+  g.save(); g.beginPath(); for (const p of DINING) pathPoly(g, p); g.clip();
+  const id = g.getImageData(196, 596, 700, 520), d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const px = 196 + (i / 4) % 700, py = 596 + Math.floor(i / 4 / 700);
+    if (DIN_KEEP.some(([x, y, w, h]) => px >= x && px < x + w && py >= y && py < y + h)) continue;
+    const r = d[i], gg = d[i + 1], bb = d[i + 2], mx = Math.max(r, gg, bb), mn = Math.min(r, gg, bb);
+    if (mx > 150 && mx - mn < 22) { d[i] = r * rgb[0]; d[i + 1] = gg * rgb[1]; d[i + 2] = bb * rgb[2]; }
+  }
+  const tmp = document.createElement('canvas'); tmp.width = 700; tmp.height = 520; tmp.getContext('2d').putImageData(id, 0, 0);
+  g.drawImage(tmp, 196, 596); g.restore();
+}
+const BEIGE = [0.90, 0.835, 0.73], TAUPE = [0.74, 0.66, 0.58], BOARD = [0.965, 0.955, 0.94], WALL = RENDER ? TAUPE : BEIGE;
+// trim is white in the Oppussing look, wall coloured in the render look
+const HL = RENDER ? 'rgba(255,238,215,.3)' : 'rgba(255,255,255,.9)', HL2 = RENDER ? 'rgba(255,238,215,.28)' : 'rgba(255,255,255,.85)';
+function multiplyWalls(g, rgb, v0, v1) { g.save(); wallClip(g, v0, v1); g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${rgb.map(c => Math.round(c * 255)).join(',')})`; g.fillRect(0, 0, W, H); g.restore(); }
+const len = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+function stroke(g, P, pts, w, col) { g.beginPath(); pts.forEach(([u, v], i) => { const p = P(u, v); i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); }); g.lineWidth = w; g.strokeStyle = col; g.stroke(); }
+function boards(g) {
+  multiplyWalls(g, BOARD, 0, CEIL); tintDining(g, BOARD);
+  g.save(); wallClip(g);
+  for (const [P, u0, u1] of [[back, -2.8, 3.01], [right, 0, 4.14]]) {
+    for (let u = Math.ceil(u0 / 1.2) * 1.2; u < u1; u += 1.2) { // taped and filled joints
+      const px = m => Math.max(2, len(P(u, 1.2), P(u + m, 1.2)));
+      stroke(g, P, [[u, 0], [u, CEIL]], px(0.16), 'rgba(250,249,246,.16)'); // feathered filler
+      stroke(g, P, [[u, 0], [u, CEIL]], px(0.09), 'rgba(250,249,246,.2)');
+      stroke(g, P, [[u, 0], [u, CEIL]], px(0.05), 'rgba(246,245,241,.28)'); // paper tape
+      stroke(g, P, [[u - 0.025, 0], [u - 0.025, CEIL]], 1, 'rgba(70,65,58,.07)'); stroke(g, P, [[u + 0.025, 0], [u + 0.025, CEIL]], 1, 'rgba(70,65,58,.07)');
+    }
+    for (let u = Math.ceil(u0 / 0.6) * 0.6; u < u1; u += 0.6) for (let v = 0.1; v < CEIL; v += 0.25) { // spot-filled screws
+      for (const du of (Math.round(u / 0.6) % 2 === 0 ? [-0.015, 0.015] : [0])) { const p = P(u + du, v), r = Math.max(1.3, len(P(u, v), P(u + 0.007, v))); g.beginPath(); g.ellipse(p[0], p[1], r, r * 1.3, 0, 0, 7); g.fillStyle = 'rgba(250,249,246,.55)'; g.fill(); }
+    }
+  }
+  g.restore();
+}
+function paint(g, keepTrim) {
+  const SK = 0.12, CR = 0.11;
+  const white = keepTrim && !RENDER;
+  multiplyWalls(g, WALL, white ? SK : 0, white ? CEIL - CR : CEIL); tintDining(g, WALL);
+  if (!keepTrim) return;
+  g.save(); wallClip(g);
+  for (const [P, segs] of [[back, [[-2.8, DOOR[0]], [DOOR[1], 3.01]]], [right, [[0, 4.14]]]]) for (const [a, b] of segs) {
+    // skirting: real wall shading kept white; ogee top edge and a soft shadow on the wall above it
+    stroke(g, P, [[a, SK + 0.004], [b, SK + 0.004]], 2.5, 'rgba(60,50,40,.22)');
+    stroke(g, P, [[a, SK - 0.006], [b, SK - 0.006]], 2, HL);
+    stroke(g, P, [[a, SK - 0.022], [b, SK - 0.022]], 1.5, 'rgba(80,75,70,.14)');
+    stroke(g, P, [[a, 0.004], [b, 0.004]], 2, 'rgba(40,30,20,.25)');
+    // crown moulding: stepped profile under the ceiling
+    stroke(g, P, [[a, CEIL - CR - 0.004], [b, CEIL - CR - 0.004]], 2.5, 'rgba(60,50,40,.22)');
+    stroke(g, P, [[a, CEIL - CR + 0.006], [b, CEIL - CR + 0.006]], 2, HL);
+    for (const [v, a1] of [[CEIL - 0.085, 0.10], [CEIL - 0.07, 0.16], [CEIL - 0.055, 0.12], [CEIL - 0.04, 0.07]]) stroke(g, P, [[a, v], [b, v]], 2, `rgba(90,85,78,${a1})`);
+    stroke(g, P, [[a, CEIL - 0.03], [b, CEIL - 0.03]], 2, HL2); stroke(g, P, [[a, CEIL - 0.012], [b, CEIL - 0.012]], 1.5, 'rgba(80,75,70,.18)');
+  }
+  // panel mouldings: raised frames in the wall colour
+  const frames = [[back, [[0.16, 1.44], [1.58, 2.85]]], [right, [[0.18, 1.34], [1.49, 2.65], [2.8, 3.96]]]];
+  for (const [P, list] of frames) for (const [a, b] of list) {
+    const v0 = 0.3, v1 = CEIL - 0.34, m = 0.028, rect = (o) => [[a + o, v0 + o], [b - o, v0 + o], [b - o, v1 - o], [a + o, v1 - o], [a + o, v0 + o]];
+    stroke(g, P, rect(-0.004), 2, 'rgba(60,50,40,.20)');
+    stroke(g, P, rect(0.006), 2.5, RENDER ? 'rgba(255,236,210,.22)' : 'rgba(255,252,246,.38)');
+    stroke(g, P, rect(m * 0.55), 2, RENDER ? 'rgba(255,236,210,.12)' : 'rgba(255,250,240,.2)');
+    stroke(g, P, rect(m), 1.6, 'rgba(60,50,40,.18)');
+  }
+  g.restore();
+}
+// floor of both rooms, for recolouring the dark vinyl to the render's warm oak herringbone
+const FLOOR = [[0, 1686], [0, 1335], [172, 1310], [206, 1312], [206, 1124], [215, 1120], [242, 1064], [250, 1052], [704, 1030], [790, 1068], [860, 1096], [880, 1104], [886, 1158], [905, 1164], [1404, 1065], [2478, 1255], [2478, 1418], [2528, 1428], [2528, 1686]];
+function oakFloor(g) {
+  const y0 = 1000, h = H - y0, id = g.getImageData(0, y0, W, h), d = id.data, mk = document.createElement('canvas'); mk.width = W; mk.height = h;
+  const mg = mk.getContext('2d'); mg.translate(0, -y0); mg.beginPath(); pathPoly(mg, FLOOR); mg.fillStyle = '#fff'; mg.fill(); const md = mg.getImageData(0, 0, W, h).data;
+  for (let i = 0; i < d.length; i += 4) { if (md[i] < 128) continue; const L = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]; d[i] = Math.min(255, 30 + 1.35 * L); d[i + 1] = Math.min(255, 18 + 0.86 * L); d[i + 2] = Math.min(255, 10 + 0.52 * L); } // brightness kept, hue of warm oak (reflections become warm highlights)
+  g.putImageData(id, 0, y0);
+}
+// evening light: warm, darker, a soft vignette and the glow of the ceiling lamp
+function evening(g) {
+  g.save(); g.globalCompositeOperation = 'multiply'; g.fillStyle = 'rgb(178,148,122)'; g.fillRect(0, 0, W, H);
+  const v = g.createRadialGradient(W * 0.55, H * 0.5, H * 0.35, W * 0.55, H * 0.5, W * 0.75); v.addColorStop(0, '#fff'); v.addColorStop(1, 'rgb(100,82,68)'); g.fillStyle = v; g.fillRect(0, 0, W, H);
+  g.globalCompositeOperation = 'screen'; const l = g.createRadialGradient(1400, 470, 10, 1400, 470, 900); l.addColorStop(0, 'rgba(255,200,140,.55)'); l.addColorStop(0.3, 'rgba(255,170,100,.18)'); l.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = l; g.fillRect(0, 0, W, H);
+  g.restore();
+}
+async function load(src) { const i = new Image(); i.src = src; await i.decode(); return i; }
+async function save(cv, name) { const blob = await new Promise(r => cv.toBlob(r, 'image/png')); await fetch('/__film/' + name, { method: 'POST', body: blob }); }
+(async () => {
+  const base = await load('ai/s2-vinyl.png'), cv = document.getElementById('c'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
+  let src = base;
+  if (RENDER) { g.drawImage(base, 0, 0); oakFloor(g); await save(cv, 's2r-oak.png'); src = document.createElement('canvas'); src.width = W; src.height = H; src.getContext('2d').drawImage(cv, 0, 0); }
+  const stage = async (name, fn) => { g.globalCompositeOperation = 'source-over'; g.drawImage(src, 0, 0); fn(g); await save(cv, name); };
+  const n = RENDER ? ['s3r-boards.png', 's4r-taupe.png', 's5r-trim.png'] : ['s3-boards.png', 's4-beige.png', 's5-trim.png'];
+  await stage(n[0], boards);
+  await stage(n[1], g => paint(g, false));
+  await stage(n[2], g => paint(g, true));
+  if (RENDER) await stage('s6r-evening.png', g => { paint(g, true); evening(g); });
+  if (location.hash === '#debug') { g.drawImage(base, 0, 0); g.save(); wallClip(g); g.fillStyle = 'rgba(255,0,0,.25)'; g.fillRect(0, 0, W, H); g.restore(); for (const p of DINING) { g.beginPath(); pathPoly(g, p); g.fillStyle = 'rgba(0,0,255,.25)'; g.fill(); } await save(cv, 'debug.png'); }
+  document.title = 'done'; await fetch('/__film/compose-done.txt', { method: 'POST', body: 'ok' });
+})();
+</script>
+</body></html>
