@@ -1,0 +1,14 @@
+# local tooling and render output
+.claude/
+.vercel/
+node_modules/
+apartment-3d/dist/
+apartment-3d/film/.chrome-profile/
+apartment-3d/film/frames/
+
+# listing photos and everything made from them (FINN / photographer copyright), kept locally only
+listing/images/
+apartment-3d/film/ai/
+apartment-3d/film/oppussing-ai.mp4
+apartment-3d/film/stue-progressive.mp4
+apartment-3d/film/stue-render-film.mp4
