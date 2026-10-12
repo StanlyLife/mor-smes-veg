@@ -379,15 +379,23 @@ function normalize(s) {
   s.settings = { ...SETTINGS, ...(s.settings || {}) }; s.items = s.items.filter(i => CAT[i.type]);
   upgradeRenovated(s); upgradeRehab(s);
   for (const r of s.rooms) if (WALLPAPER_ROOMS.includes(r.id) && r.wall === 'paint_listing') r.wall = 'wallpaper_struct';
-  // earlier models ran the cistern box to the door wall with the washer in front of it, and hung the tall cabinet over the vanity
+  // earlier models had a low cistern box (36 cm, or run to the door wall) with a washer beside it, and hung the tall cabinet over the vanity;
+  // the sketch shows a full-height installation wall from the pipe shaft to the hall wall, the toilet centred on it and no washer
   for (const it of s.items) {
     const at = (x, z) => Math.abs(it.x - x) < 0.02 && Math.abs(it.z - z) < 0.02;
-    if (it.type === 'box' && at(1.58, 2.405) && Math.abs(it.w - 0.96) < 0.01) Object.assign(it, { x: 1.28, w: 0.36 });
-    else if (it.type === 'washer' && at(1.76, 2.79)) it.z = 2.62;
+    if (it.type === 'box' && ((at(1.28, 2.405) && Math.abs(it.w - 0.36) < 0.01) || (at(1.58, 2.405) && Math.abs(it.w - 0.96) < 0.01))) Object.assign(it, { x: 1.58, w: 0.96, h: 2.4 });
+    else if (it.type === 'toilet' && at(1.28, 2.75)) it.x = 1.58;
     else if (it.type === 'vanity' && at(1.55, 3.89)) it.x = 1.28;
     else if (it.type === 'mirror_led' && at(1.4, 4.11)) it.x = 1.28;
     else if (it.type === 'tall_bath' && at(1.9, 4.01) && Math.abs(it.h - 1.2) < 0.01) Object.assign(it, { x: 1.87, w: 0.34, y: 0.42, h: 1.66 });
   }
+  s.items = s.items.filter(it => !(it.type === 'washer' && Math.abs(it.x - 1.76) < 0.02 && (Math.abs(it.z - 2.62) < 0.02 || Math.abs(it.z - 2.79) < 0.02)));
+  // openings re-measured on the sketch (balcony door, kitchen-dining opening, bathroom door); the bedroom 1 door no longer swings into the bed
+  const op = (wid, oid) => s.walls.find(w => w.id === wid)?.openings?.find(o => o.id === oid);
+  const bd = op('e1b', 'o_bdoor'); if (bd && Math.abs(bd.pos - 0.59) < 0.005 && Math.abs(bd.w - 0.85) < 0.005) Object.assign(bd, { pos: 0.575, w: 0.89, open: bd.open || 30 });
+  const kd = op('i1', 'o_kdoor'); if (kd && Math.abs(kd.pos - 1.3) < 0.005 && Math.abs(kd.w - 0.8) < 0.005) Object.assign(kd, { pos: 1.32, w: 0.72 });
+  const ba = op('i3', 'o_bath'); if (ba && Math.abs(ba.pos - 1.08) < 0.005) ba.pos = 0.99;
+  const b1 = op('i9', 'o_b1door'); if (b1 && b1.open === 80) b1.open = 50;
   // earlier models put a wall and door between the entrance and the living room; it is an open passage
   const i6 = s.walls.find(w => w.id === 'i6' && (w.openings || []).some(o => o.id === 'o_edoor')); if (i6) { i6.open = true; i6.openings = i6.openings.filter(o => o.id !== 'o_edoor'); }
   const en = s.rooms.find(r => r.id === 'r_entry'); if (en?.refNote) en.refNote = en.refNote.replace('to the living-room doorway', 'to the open passage into the living room');

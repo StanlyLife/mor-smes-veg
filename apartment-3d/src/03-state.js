@@ -16,23 +16,26 @@ function defaultState() {
   const walls = [
     // kitchen window: the photos show it running from the narrow drawer column almost to the corner (wider than the sketch symbol)
     W('e1a', [-0.1, -0.1], [3.6, -0.1], 0.2, [O('o_kwin', 'window', 2.7, 1.5, 1.15, 0.95, { panes: 1 })]),
-    W('e1b', [3.6, -0.1], [6.05, -0.1], 0.2, [O('o_bdoor', 'balcony', 0.59, 0.85, 2.05, 0, { hinge: 'start', swing: -1, open: 0 }), O('o_dwin', 'window', 1.69, 0.95, 1.45, 0.6, { panes: 1 })], { B: 'clad_yellow' }),
+    // balcony door: 3.73-4.62 m incl. frame on the sketch, hinged at the kitchen end and drawn opening out onto the balcony (~30°)
+    W('e1b', [3.6, -0.1], [6.05, -0.1], 0.2, [O('o_bdoor', 'balcony', 0.575, 0.89, 2.05, 0, { hinge: 'start', swing: -1, open: 30 }), O('o_dwin', 'window', 1.69, 0.95, 1.45, 0.6, { panes: 1 })], { B: 'clad_yellow' }),
     W('e1c', [6.05, -0.1], [8.93, -0.1], 0.2, [O('o_b1win', 'window', 1.115, 1.0, 1.2, 0.85, { panes: 2 })], { B: 'clad_yellow' }),
     W('e2', [8.93, -0.1], [8.93, 8.52], 0.2, [], { B: 'clad_gable' }),
     W('e3', [8.93, 8.52], [1.17, 8.52], 0.2, [O('o_lwin', 'window', 1.33, 2.0, 1.3, 0.78, { panes: 3 }), O('o_b2win', 'window', 5.96, 1.0, 1.2, 0.85, { panes: 2 })]),
     W('e4', [1.17, 8.52], [1.17, 4.19], 0.2, [O('o_front', 'front', 3.62, 0.9, 2.05, 0, { hinge: 'end', swing: 1, open: 0 })]),
     W('e5', [2.11, 4.19], [-0.1, 4.19], 0.14),
     W('e6', [-0.1, 4.19], [-0.1, -0.1], 0.2),
-    W('i1', [3.6, -0.1], [3.6, 4.23], 0.1, [O('o_kdoor', 'opening', 1.3, 0.8, 2.02)]),
+    // kitchen-dining opening 0.86-1.58 m from the window wall (sketch); bathroom door 2.91-3.61 m, the sketch position scaled to the 1.80 m deep bathroom
+    W('i1', [3.6, -0.1], [3.6, 4.23], 0.1, [O('o_kdoor', 'opening', 1.32, 0.72, 2.02)]),
     W('i2', [-0.1, 2.27], [3.6, 2.27], 0.1),
-    W('i3', [2.11, 2.27], [2.11, 4.19], 0.1, [O('o_bath', 'door', 1.08, 0.7, 2.0, 0, { hinge: 'start', swing: 1, open: 40 })]),
+    W('i3', [2.11, 2.27], [2.11, 4.19], 0.1, [O('o_bath', 'door', 0.99, 0.7, 2.0, 0, { hinge: 'start', swing: 1, open: 40 })]),
     W('i4', [1.17, 5.40], [3.6, 5.40], 0.1, [O('o_b2door', 'door', 1.12, 0.8, 2.02, 0, { hinge: 'start', swing: 1, open: 80 })]),
     W('i5', [3.6, 5.40], [3.6, 8.52], 0.1),
     // the entrance runs straight into the living room through a 1.09 m full-height passage (sketch, photo 31): no wall or door, only the room boundary
     Object.assign(W('i6', [3.6, 4.23], [3.6, 5.40], 0.1), { open: true }),
     W('i7', [3.6, 4.23], [6.05, 4.23], 0.1, [O('o_dopen', 'opening', 1.25, 1.8, 2.1)]),
     W('i8', [6.05, 4.23], [8.93, 4.23], 0.1),
-    W('i9', [6.05, -0.1], [6.05, 4.23], 0.12, [O('o_b1door', 'door', 2.93, 0.8, 2.02, 0, { hinge: 'start', swing: -1, open: 80 })]),
+    // bedroom 1 door shown at 50°: wider than that it would swing into the double bed
+    W('i9', [6.05, -0.1], [6.05, 4.23], 0.12, [O('o_b1door', 'door', 2.93, 0.8, 2.02, 0, { hinge: 'start', swing: -1, open: 50 })]),
   ];
   const R = (id, name, anchor, o = {}) => Object.assign({ id, name, anchor, floor: 'oak_honey', wall: 'paint_listing', ceil: 'paint_white', drop: 0, skirt: true }, o);
   const rooms = [
@@ -58,9 +61,9 @@ function defaultState() {
   I('backsplash', 0.45, 0.006, 0, { w: 0.9 }); I('backsplash', 1.2, 0.006, 0, { w: 0.6, h: 0.51, c1: 'marble_white' }); I('backsplash', 1.63, 0.006, 0, { w: 0.26 });
   I('spots', 1.8, 1.1, 0);
   // ---- Bad (2019): stone-look tiles, mosaic shower floor, wall-hung toilet, driftwood vanity, LED mirror
-  // pipe shaft beside the shower; the cistern box only covers the toilet, the washer stands against the wall in the corner by the door (photos 28-29)
-  I('box', 0.55, 2.56, 0, { w: 1.1, d: 0.48, h: 2.4, c1: 'tile_greige' }); I('box', 1.28, 2.405, 0, { w: 0.36, d: 0.17, h: 1.12, c1: 'tile_greige' });
-  I('toilet', 1.28, 2.75, 0); I('washer', 1.76, 2.62, 0);
+  // pipe shaft beside the shower; behind the toilet a full-height installation wall runs from the shaft to the hall wall (sketch), toilet centred on it
+  I('box', 0.55, 2.56, 0, { w: 1.1, d: 0.48, h: 2.4, c1: 'tile_greige' }); I('box', 1.58, 2.405, 0, { w: 0.96, d: 0.17, h: 2.4, c1: 'tile_greige' });
+  I('toilet', 1.58, 2.75, 0);
   I('shower', 0.42, 3.46, 90, { w: 1.32, d: 0.84 });
   I('vanity', 1.28, 3.89, 180); I('mirror_led', 1.28, 4.11, 180, { w: 0.55 }); I('tall_bath', 1.87, 4.01, 180, { w: 0.34, y: 0.42, h: 1.66 }); // tall cabinet hangs beside the vanity, by the door
   // ---- Entré / gang: white framed sliding wardrobe, black mirror, velvet pouf
