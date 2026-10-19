@@ -358,14 +358,23 @@ function listingTab() {
 }
 function wireListing(el) { $$('[data-photo]', el).forEach(b => b.onclick = () => openPhoto(+b.dataset.photo, 'listing')); }
 let lbIdx = 0, lbSet = 'listing';
+// set: 'listing', 'renders', or a list of { src, alt, label } (the filtered photo gallery)
+const photoList = set => Array.isArray(set) ? set : set === 'renders'
+  ? RENDERS.map(p => ({ src: `${RENDER_BASE}${p[0]}.webp`, alt: p[2], label: `${p[1]} · ${p[2]}` }))
+  : PHOTOS.map(p => ({ src: `${PHOTO_BASE}${p[0]}.jpg`, alt: p[2], label: `${p[0]} · ${p[1]} · ${p[2]}` }));
 function openPhoto(i, set = lbSet) {
-  lbSet = set; const L = set === 'renders' ? RENDERS : PHOTOS;
-  lbIdx = (i + L.length) % L.length; const p = L[lbIdx], lb = $('#lightbox'), src = set === 'renders' ? `${RENDER_BASE}${p[0]}.webp` : `${PHOTO_BASE}${p[0]}.jpg`;
-  lb.innerHTML = `<img src="${src}" alt="${esc(p[2])}"><div class="row"><button class="btn" id="lbPrev">‹ Prev</button><span>${set === 'renders' ? '' : p[0] + ' · '}${esc(p[1])} · ${esc(p[2])}</span><button class="btn" id="lbNext">Next ›</button><button class="btn" id="lbClose">Close</button></div>`;
+  lbSet = set; const L = photoList(set);
+  lbIdx = (i + L.length) % L.length; const p = L[lbIdx], lb = $('#lightbox');
+  lb.innerHTML = `<img src="${p.src}" alt="${esc(p.alt)}"><div class="row"><button class="btn" id="lbPrev">‹ Prev</button><span>${esc(p.label)}</span><button class="btn" id="lbNext">Next ›</button><button class="btn" id="lbClose">Close</button></div>`;
   lb.hidden = false; $('#lbPrev').onclick = () => openPhoto(lbIdx - 1); $('#lbNext').onclick = () => openPhoto(lbIdx + 1); $('#lbClose').onclick = () => lb.hidden = true;
   lb.onclick = e => { if (e.target === lb) lb.hidden = true; };
 }
-addEventListener('keydown', e => { const lb = $('#lightbox'); if (lb.hidden) return; if (e.key === 'Escape') lb.hidden = true; if (e.key === 'ArrowLeft') openPhoto(lbIdx - 1); if (e.key === 'ArrowRight') openPhoto(lbIdx + 1); }, true);
+// the lightbox takes its keys before anything else (a dialog underneath, the planner shortcuts)
+addEventListener('keydown', e => {
+  const lb = $('#lightbox'); if (lb.hidden || !['Escape', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+  e.stopImmediatePropagation();
+  if (e.key === 'Escape') lb.hidden = true; else openPhoto(lbIdx + (e.key === 'ArrowLeft' ? -1 : 1));
+}, true);
 
 // ---------- designs & saving ----------
 const LS = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } }, del(k) { try { localStorage.removeItem(k); } catch { } } };
